@@ -1,0 +1,28 @@
+.header {
+  padding: 2rem 0 1rem;
+  background: linear-gradient(135deg, #0f172a, #111827 60%, #0b1324);
+  color: white;
+}
+
+.header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.header-title {
+  margin: 0.25rem 0;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+}
+
+.header-subtitle {
+  margin: 0;
+  color: #cbd5e1;
+  max-width: 580px;
+  font-size: 1rem;
+}
