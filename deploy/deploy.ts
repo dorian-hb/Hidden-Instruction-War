@@ -9,11 +9,18 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     throw new Error("Deployer account is missing. Set PRIVATE_KEY before deploying.");
   }
 
-  const deployedGame = await deploy("WarGame", {
+  const deployedGold = await deploy("GoldCoin", {
     from: deployer,
     log: true,
   });
 
+  const deployedGame = await deploy("WarGame", {
+    from: deployer,
+    args: [deployedGold.address],
+    log: true,
+  });
+
+  console.log(`GoldCoin contract: `, deployedGold.address);
   console.log(`WarGame contract: `, deployedGame.address);
 };
 export default func;
