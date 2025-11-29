@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useAccount, useReadContract } from 'wagmi';
 import { ethers } from 'ethers';
 import { Header } from './Header';
-import { CONTRACT_ADDRESS, CONTRACT_ABI } from '../config/contracts';
+import { CONTRACT_ADDRESS, CONTRACT_ABI, GOLD_COIN_ADDRESS, GOLD_COIN_ABI } from '../config/contracts';
 import { useEthersSigner } from '../hooks/useEthersSigner';
 import { useZamaInstance } from '../hooks/useZamaInstance';
 
@@ -24,6 +24,9 @@ export function GameApp() {
   const signer = useEthersSigner();
   const { instance, isLoading: isZamaLoading, error: zamaError } = useZamaInstance();
 
+  const zeroAddress = '0x0000000000000000000000000000000000000000';
+  const isConfigured = CONTRACT_ADDRESS !== zeroAddress && GOLD_COIN_ADDRESS !== zeroAddress;
+
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isClaiming, setIsClaiming] = useState(false);
   const [isBuilding, setIsBuilding] = useState<number | null>(null);
@@ -35,11 +38,11 @@ export function GameApp() {
     refetch: refetchGold,
     isFetching: loadingGold,
   } = useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: 'getGoldBalance',
+    address: GOLD_COIN_ADDRESS,
+    abi: GOLD_COIN_ABI,
+    functionName: 'clearBalanceOf',
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: !!address && isConfigured },
   });
 
   const { data: encryptedBuildings, refetch: refetchBuildings, isFetching: loadingBuildings } = useReadContract({
@@ -47,15 +50,15 @@ export function GameApp() {
     abi: CONTRACT_ABI,
     functionName: 'getBuildings',
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: !!address && isConfigured },
   });
 
   const { data: hasClaimed } = useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
+    address: GOLD_COIN_ADDRESS,
+    abi: GOLD_COIN_ABI,
     functionName: 'hasClaimedGold',
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: !!address && isConfigured },
   });
 
   const readableGold = useMemo(() => {
@@ -66,16 +69,20 @@ export function GameApp() {
   }, [goldBalance]);
 
   const { data: encryptedGold } = useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: 'getEncryptedGold',
+    address: GOLD_COIN_ADDRESS,
+    abi: GOLD_COIN_ABI,
+    functionName: 'confidentialBalanceOf',
     args: address ? [address] : undefined,
-    query: { enabled: !!address },
+    query: { enabled: !!address && isConfigured },
   });
 
   const handleClaimGold = async () => {
     if (!signer) {
       setStatusMessage('Connect your wallet to claim gold.');
+      return;
+    }
+    if (!isConfigured) {
+      setStatusMessage('Contract addresses are not configured yet.');
       return;
     }
     setStatusMessage(null);
@@ -102,6 +109,18 @@ export function GameApp() {
       setStatusMessage('Connect your wallet before building.');
       return;
     }
+    if (!isConfigured) {
+      setStatusMessage('Contract addresses are not configured yet.');
+      return;
+    }
+    if (!instance) {
+      setStatusMessage('Encryption service is still loading.');
+      return;
+    }
+    if (!address) {
+      setStatusMessage('Connect your wallet before building.');
+      return;
+    }
 
     setStatusMessage(null);
     setIsBuilding(buildingId);
@@ -109,8 +128,11 @@ export function GameApp() {
 
     try {
       const resolvedSigner = await signer;
+      const encryptedInput = instance.createEncryptedInput(CONTRACT_ADDRESS, address);
+      encryptedInput.add32(BigInt(buildingId));
+      const encryptedPayload = await encryptedInput.encrypt();
       const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, resolvedSigner);
-      const tx = await contract.build(buildingId);
+      const tx = await contract.build(buildingId, encryptedPayload.handles[0], encryptedPayload.inputProof);
       await tx.wait();
       await refetchGold();
       await refetchBuildings();
@@ -125,6 +147,10 @@ export function GameApp() {
   const decryptBuildings = async () => {
     if (!instance) {
       setStatusMessage('Encryption service is still loading.');
+      return;
+    }
+    if (!isConfigured) {
+      setStatusMessage('Contract addresses are not configured yet.');
       return;
     }
     if (!address) {
@@ -189,6 +215,10 @@ export function GameApp() {
       setStatusMessage('Encryption service is still loading.');
       return;
     }
+    if (!isConfigured) {
+      setStatusMessage('Contract addresses are not configured yet.');
+      return;
+    }
     if (!address || !encryptedGold) {
       setStatusMessage('No encrypted gold available to decrypt.');
       return;
@@ -199,7 +229,7 @@ export function GameApp() {
 
     try {
       const keypair = instance.generateKeypair();
-      const contractAddresses = [CONTRACT_ADDRESS];
+      const contractAddresses = [GOLD_COIN_ADDRESS];
       const startTimeStamp = Math.floor(Date.now() / 1000).toString();
       const durationDays = '10';
       const eip712 = instance.createEIP712(keypair.publicKey, contractAddresses, startTimeStamp, durationDays);
@@ -221,7 +251,7 @@ export function GameApp() {
         [
           {
             handle: encryptedGold as string,
-            contractAddress: CONTRACT_ADDRESS,
+            contractAddress: GOLD_COIN_ADDRESS,
           },
         ],
         keypair.privateKey,
